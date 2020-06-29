@@ -150,8 +150,42 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint
 
 // Compute time-to-collision (TTC) based on keypoint correspondences in successive images
 void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, 
-                      std::vector<cv::DMatch> kptMatches, double frameRate, double &TTC, cv::Mat *visImg)
+                      std::vector<cv::DMatch> &kptMatches, double frameRate, double &TTC, cv::Mat *visImg)
 {
+    vector<double> dist;
+    for (auto it1 = kptMatches.begin(); it1 != kptMatches.end() - 1; ++it1) {
+        cv::KeyPoint kpt_outer_curr = kptsCurr.at(it1->trainIdx); 
+        cv::KeyPoint kpt_outer_prev = kptsPrev.at(it1->queryIdx);  
+
+        for (auto it2 = kptMatches.begin() + 1; it2 != kptMatches.end(); ++it2) {
+            cv::KeyPoint kpt_inner_curr = kptsCurr.at(it2->trainIdx);  
+            cv::KeyPoint kpt_outer_prev = kptsPrev.at(it2->queryIdx);  
+
+            double dist_curr = cv::norm(kpt_outer_curr.pt - kpt_inner_curr.pt);
+            double dist_prev = cv::norm(kpt_outer_prev.pt - kpt_outer_prev.pt);
+
+            double dist_thresh = 100.0;  // Threshold of minimum distance between keypoints 
+
+            if (dist_prev > std::numeric_limits<double>::epsilon() && dist_curr >= dist_thresh) {
+                double distRatio = dist_curr / dist_prev;
+                dist.push_back(distRatio);
+            }
+        }
+    }
+
+    if (dist.size() == 0)
+    {
+        TTC = std::numeric_limits<double>::quiet_NaN();
+        std::cout << "camera TTC is nan= " << TTC << std::endl;
+        return;
+    }
+
+    //TODO: add logic as in lidar ttc to get more robust values or compare how that works..
+    std::sort(dist.begin(), dist.end());
+    double median_dist = dist[dist.size() / 2];
+
+    TTC = (-1.0 / frameRate) / (1 - median_dist);
+    std::cout << "camera TTC = " << TTC << std::endl;
     // ...
 }
 
