@@ -148,7 +148,38 @@ void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPo
 void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
                      std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC)
 {
+    std::vector<LidarPoint> prev_x_list;
+    std::vector<LidarPoint> curr_x_list;
+    double prev_x_avg = mean(lidarPointsPrev);
+    double prev_std_dev = dev(lidarPointsPrev, prev_x_avg);
+    double curr_x_avg = mean(lidarPointsCurr);
+    double curr_std_dev = dev(lidarPointsCurr, curr_x_avg);
+    double min_x_prev = 100000;
+    double min_x_curr = 100000;
+    double max_x_prev = 0;
+    double max_x_curr = 0;
+    
+    for(auto& point : lidarPointsPrev){
+        if(abs(point.x - prev_x_avg)  < prev_std_dev){
+            prev_x_list.push_back(point);
+        }
+        if (point.x < min_x_prev) min_x_prev = point.x;
+        if (point.x > max_x_prev) max_x_prev = point.x;
+    }
+    double prev_x = mean(prev_x_list);
+
+    for(auto& point : lidarPointsCurr){
+        if(abs(point.x - curr_x_avg)  < curr_std_dev){
+            curr_x_list.push_back(point);
+        }
+        if (point.x < min_x_curr) min_x_curr = point.x;
+        if (point.x > max_x_curr) max_x_curr = point.x;
+    }
+    double curr_x = mean(curr_x_list);
+    std::cout << prev_x << "  " << min_x_prev << "  " << max_x_prev << "  " << curr_x << "  " << min_x_curr << "  " << max_x_curr << std::endl;
     // ...
+    TTC = curr_x * (1.0 / frameRate) / (prev_x - curr_x);
+    std::cout << "lidar TTC = " << TTC << std::endl;
 }
 
 
@@ -183,7 +214,7 @@ void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bb
         // now we have list of boxes in prev and curr data frame that enclose the current keypoint match
         //ensure that there is at least 1 bounding box in each of the data frames
         if(prev_boxid.empty() || curr_boxid.empty()){
-            std::cout << "no bounding box match found!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+            // std::cout << "no bounding box match found!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
             continue;  // no bounding box match is found for the keypoint
         }
 
@@ -231,8 +262,26 @@ void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bb
             continue;
         }    
         bbBestMatches.insert(std::pair<int, int>(id, prev_matched_bb_id));
-        std::cout << "mm size = " << bbBestMatches.size() << std::endl;
+        // std::cout << "mm size = " << bbBestMatches.size() << std::endl;
     }
     // ...
 }
 
+double mean(std::vector<LidarPoint> &list){
+    double avg = 0;
+    for (auto& point : list){
+        avg = avg + point.x;
+    }
+    avg = avg / static_cast<double>(list.size());
+    return avg;
+}
+
+double dev(std::vector<LidarPoint> &list, double mean){
+    double std_dev = 0;
+    double sum = 0;
+    for(auto& point : list){
+        sum = sum + (point.x - mean) * (point.x - mean);
+    }
+    std_dev = std::sqrt(sum/list.size());
+    return std_dev;
+}
