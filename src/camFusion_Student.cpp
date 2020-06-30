@@ -159,14 +159,14 @@ void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPo
 
         for (auto it2 = kptMatches.begin() + 1; it2 != kptMatches.end(); ++it2) {
             cv::KeyPoint kpt_inner_curr = kptsCurr.at(it2->trainIdx);  
-            cv::KeyPoint kpt_outer_prev = kptsPrev.at(it2->queryIdx);  
+            cv::KeyPoint kpt_inner_prev = kptsPrev.at(it2->queryIdx);  
 
             double dist_curr = cv::norm(kpt_outer_curr.pt - kpt_inner_curr.pt);
-            double dist_prev = cv::norm(kpt_outer_prev.pt - kpt_outer_prev.pt);
+            double dist_prev = cv::norm(kpt_outer_prev.pt - kpt_inner_prev.pt);
 
             double dist_thresh = 100.0;  // Threshold of minimum distance between keypoints 
 
-            if (dist_prev > std::numeric_limits<double>::epsilon() && dist_curr >= dist_thresh) {
+            if (dist_prev > std::numeric_limits<double>::epsilon()) && dist_curr >= dist_thresh) {
                 double distRatio = dist_curr / dist_prev;
                 dist.push_back(distRatio);
             }
