@@ -166,7 +166,7 @@ void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPo
 
             double dist_thresh = 100.0;  // Threshold of minimum distance between keypoints 
 
-            if (dist_prev > std::numeric_limits<double>::epsilon()) && dist_curr >= dist_thresh) {
+            if (dist_prev > std::numeric_limits<double>::epsilon() && dist_curr >= dist_thresh) {
                 double distRatio = dist_curr / dist_prev;
                 dist.push_back(distRatio);
             }
@@ -186,6 +186,7 @@ void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPo
 
     TTC = (-1.0 / frameRate) / (1 - median_dist);
     std::cout << "camera TTC = " << TTC << std::endl;
+        
     // ...
 }
 
@@ -230,87 +231,135 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
 
 void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame)
 {
-  std::multimap<int, int> mm;
-    // iterate through matches to find the corresponding keypoints in prev and current image
-    // add the corresponding bounding boxes if found to mm
-    // prevFrame keypoints correspond to queryIdx in matches
-    // currFrame keypoints correspond to trainIdx in matches
-    for (auto match : matches){
+  std::multimap<int, int> mm {};
+    int max_prev_box_id = 0;
+
+    for (auto match : matches) {
         cv::KeyPoint prev_kp = prevFrame.keypoints.at(match.queryIdx);
         cv::KeyPoint curr_kp = currFrame.keypoints.at(match.trainIdx);
         
-        std::vector<int> prev_boxid;
-        std::vector<int> curr_boxid;
+        int prev_box_id = -1;
+        int curr_box_id = -1;
+
+        // For each bounding box in the previous frame
+        for (auto bbox : prevFrame.boundingBoxes) {
+            if (bbox.roi.contains(prev_kp.pt)) prev_box_id = bbox.boxID;
+        }
+
+        // For each bounding box in the current frame
+        for (auto bbox : currFrame.boundingBoxes) {
+            if (bbox.roi.contains(curr_kp.pt)) curr_box_id = bbox.boxID;
+        }
         
-        for (auto bbox : prevFrame.boundingBoxes){
-            // std::cout << bbox.keypoints.size() << std::endl;
-            if(bbox.roi.contains(prev_kp.pt)){
-                prev_boxid.push_back(bbox.boxID);  // add box id to list of boxes the keypoint may be included in.
-            }
-        }
+        // Add the containing boxID for each match to a multimap
+        mm.insert({curr_box_id, prev_box_id});
 
-        for (auto bbox : currFrame.boundingBoxes){
-            // std::cout << bbox.keypoints.size() << std::endl;
-            if(bbox.roi.contains(curr_kp.pt)){
-                curr_boxid.push_back(bbox.boxID);  // add box id to list of boxes the keypoint may be included in.
-            }
-        }
-
-        // now we have list of boxes in prev and curr data frame that enclose the current keypoint match
-        //ensure that there is at least 1 bounding box in each of the data frames
-        if(prev_boxid.empty() || curr_boxid.empty()){
-            // std::cout << "no bounding box match found!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
-            continue;  // no bounding box match is found for the keypoint
-        }
-
-        // if code gets here, there is at least 1 bounding box match found. store the possible matches in mm
-        for (auto i : curr_boxid){
-            for (auto j : prev_boxid){
-                mm.insert(std::pair<int, int>(i, j));
-            } 
-        }
-        // std::cout << "____________________________________________________" << std:::endl;
+        max_prev_box_id = std::max(max_prev_box_id, prev_box_id);
     }
 
-    // iterate through the bounding boxes in the current frame and select the best match for each BB 
-    for (auto bbox : currFrame.boundingBoxes){
-        int id = bbox.boxID;
-        std::pair <std::multimap<int,int>::iterator, std::multimap<int,int>::iterator> ret;
-        ret = mm.equal_range(id);
+    // Setup a list of boxID int values to iterate over in the current frame
+    vector<int> curr_frame_box_id {};
+    for (auto box : currFrame.boundingBoxes) curr_frame_box_id.push_back(box.boxID);
 
-        std::map<int, int> local;
-        for (std::multimap<int,int>::iterator it = ret.first; it!= ret.second; ++it){
-            // record the <prev frame bb id> and <count how many times it has been linked> to the curr bb
-            int prev_frame_bb_id = it->second;
-            std::map<int,int>::iterator local_it = local.find(prev_frame_bb_id);
-            if (local_it == local.end()){
-                local.insert(std::pair<int, int>(prev_frame_bb_id, 1));
-            }
-            else
-            {
-                local_it->second = local_it->second + 1;
-            }
+    for (int k : curr_frame_box_id) {
+        auto ret = mm.equal_range(k);
+
+        std::vector<int> counts(max_prev_box_id + 1, 0);
+
+        for (auto it = ret.first; it != ret.second; ++it) {
+            if (-1 != (*it).second) counts[(*it).second] += 1;
         }
 
-        //iterate through map to find the prev_bbox_id with max counts, select this as best match
-        int max_count = 0;
-        int prev_matched_bb_id = -1; 
-        for(auto& map_ele : local){
-            if (map_ele.second > max_count){
-                max_count = map_ele.second;
-                prev_matched_bb_id = map_ele.first;
-            }
-        }
+        int ind = std::distance(counts.begin(), std::max_element(counts.begin(), counts.end()));
 
-        if(prev_matched_bb_id == -1){
-            std::cout << "error in matchingbounding boxes!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
-            continue;
-        }    
-        bbBestMatches.insert(std::pair<int, int>(id, prev_matched_bb_id));
-        // std::cout << "mm size = " << bbBestMatches.size() << std::endl;
+        bbBestMatches.insert({ind, k});
     }
-    // ...
 }
+//   std::multimap<int, int> mm;
+//     // iterate through matches to find the corresponding keypoints in prev and current image
+//     // add the corresponding bounding boxes if found to mm
+//     // prevFrame keypoints correspond to queryIdx in matches
+//     // currFrame keypoints correspond to trainIdx in matches
+//     for (auto match : matches){
+//         cv::KeyPoint prev_kp = prevFrame.keypoints.at(match.queryIdx);
+//         cv::KeyPoint curr_kp = currFrame.keypoints.at(match.trainIdx);
+        
+// //         std::vector<int> prev_boxid;
+// //         std::vector<int> curr_boxid;
+//         int prev_boxid;
+//         int curr_boxid;
+        
+//         for (auto bbox : prevFrame.boundingBoxes){
+//             // std::cout << bbox.keypoints.size() << std::endl;
+//             if(bbox.roi.contains(prev_kp.pt)){
+// //                 prev_boxid.push_back(bbox.boxID);  // add box id to list of boxes the keypoint may be included in.
+//                 prev_boxid = bbox.boxID;
+//             }
+//         }
+
+//         for (auto bbox : currFrame.boundingBoxes){
+//             // std::cout << bbox.keypoints.size() << std::endl;
+//             if(bbox.roi.contains(curr_kp.pt)){
+// //                 curr_boxid.push_back(bbox.boxID);  // add box id to list of boxes the keypoint may be included in.
+//                 curr_boxid = bbox.boxID;
+//             }
+//         }
+
+//         // now we have list of boxes in prev and curr data frame that enclose the current keypoint match
+//         //ensure that there is at least 1 bounding box in each of the data frames
+// //         if(prev_boxid.empty() || curr_boxid.empty()){
+// //             // std::cout << "no bounding box match found!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+// //             continue;  // no bounding box match is found for the keypoint
+// //         }
+
+//         // if code gets here, there is at least 1 bounding box match found. store the possible matches in mm
+// //         for (auto i : curr_boxid){
+// //             for (auto j : prev_boxid){
+//                 mm.insert(std::pair<int, int>(curr_boxid, prev_boxid));
+// //             } 
+// //         }
+//         // std::cout << "____________________________________________________" << std:::endl;
+//     }
+
+//     // iterate through the bounding boxes in the current frame and select the best match for each BB 
+//     for (auto bbox : currFrame.boundingBoxes){
+//         int id = bbox.boxID;
+//         std::pair <std::multimap<int,int>::iterator, std::multimap<int,int>::iterator> ret;
+//         ret = mm.equal_range(id);
+
+//         std::map<int, int> local;
+//         for (std::multimap<int,int>::iterator it = ret.first; it!= ret.second; ++it){
+//             // record the <prev frame bb id> and <count how many times it has been linked> to the curr bb
+//             int prev_frame_bb_id = it->second;
+//             std::map<int,int>::iterator local_it = local.find(prev_frame_bb_id);
+//             if (local_it == local.end()){
+//                 local.insert(std::pair<int, int>(prev_frame_bb_id, 1));
+//             }
+//             else
+//             {
+//                 local_it->second = local_it->second + 1;
+//             }
+//         }
+
+//         //iterate through map to find the prev_bbox_id with max counts, select this as best match
+//         int max_count = 0;
+//         int prev_matched_bb_id = -1; 
+//         for(auto& map_ele : local){
+//             if (map_ele.second > max_count){
+//                 max_count = map_ele.second;
+//                 prev_matched_bb_id = map_ele.first;
+//             }
+//         }
+
+//         if(prev_matched_bb_id == -1){
+//             std::cout << "error in matchingbounding boxes!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+//             continue;
+//         }    
+//         bbBestMatches.insert(std::pair<int, int>(id, prev_matched_bb_id));
+//         // std::cout << "mm size = " << bbBestMatches.size() << std::endl;
+//     }
+//     // ...
+// }
 
 double mean(std::vector<LidarPoint> &list){
     double avg = 0;

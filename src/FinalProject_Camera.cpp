@@ -21,13 +21,15 @@
 #include "camFusion.hpp"
 
 using namespace std;
-
+ofstream myfile;
+    
 /* MAIN PROGRAM */
 int main(int argc, const char *argv[])
 {
     /* INIT VARIABLES AND DATA STRUCTURES */
-
-    // data location
+	myfile.open ("out.txt");
+//     myfile  << "Writing this to a file.\n";
+//       data location
     string dataPath = "../";
 
     // camera
@@ -79,7 +81,7 @@ int main(int argc, const char *argv[])
     for (size_t imgIndex = 0; imgIndex <= imgEndIndex - imgStartIndex; imgIndex+=imgStepWidth)
     {
         /* LOAD IMAGE INTO BUFFER */
-
+		myfile << "img index = " << imgIndex << "\n";
         // assemble filenames for current index
         ostringstream imgNumber;
         imgNumber << setfill('0') << setw(imgFillWidth) << imgStartIndex + imgIndex;
@@ -94,10 +96,10 @@ int main(int argc, const char *argv[])
         dataBuffer.push_back(frame);
 
         //limit data buffer size to dataBufferSize
-        while (dataBuffer.size() > dataBufferSize)
-        {
-            dataBuffer.erase(dataBuffer.begin());
-        }
+//         while (dataBuffer.size() > dataBufferSize)
+//         {
+//             dataBuffer.erase(dataBuffer.begin());
+//         }
         
         cout << "#1 : LOAD IMAGE INTO BUFFER done" << endl;
 
@@ -156,7 +158,9 @@ int main(int argc, const char *argv[])
 
         // extract 2D keypoints from current image
         vector<cv::KeyPoint> keypoints; // create empty feature list for current image
-        string detectorType = "SHITOMASI";
+        string detectorType = "AKAZE";
+        string descriptorType = "AKAZE"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
+        
 
         if (detectorType.compare("SHITOMASI") == 0)
         {
@@ -198,7 +202,7 @@ int main(int argc, const char *argv[])
         /* EXTRACT KEYPOINT DESCRIPTORS */
 
         cv::Mat descriptors;
-        string descriptorType = "BRISK"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
+//         string descriptorType = "AKAZE"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
         descKeypoints((dataBuffer.end() - 1)->keypoints, (dataBuffer.end() - 1)->cameraImg, descriptors, descriptorType);
 
         // push descriptors for current frame to end of data buffer
@@ -238,7 +242,7 @@ int main(int argc, const char *argv[])
             // store matches in current data frame
             (dataBuffer.end()-1)->bbMatches = bbBestMatches;
 
-            cout << "#8 : TRACK 3D OBJECT BOUNDING BOXES done" << endl;
+            cout << "#8 : TRACK 3D OBJECT BOUNDING BOXES done  " << bbBestMatches.size() << endl;
 
 
             /* COMPUTE TTC ON OBJECT IN FRONT */
@@ -264,14 +268,17 @@ int main(int argc, const char *argv[])
                     }
                 }
 
+              	std::cout << "lidar sizes  " << currBB->lidarPoints.size() << "  " << prevBB->lidarPoints.size() <<std::endl;
                 // compute TTC for current match
                 if( currBB->lidarPoints.size()>0 && prevBB->lidarPoints.size()>0 ) // only compute TTC if we have Lidar points
                 {
+                    std::cout << "FP2 " << std::endl;
                     //// STUDENT ASSIGNMENT
                     //// TASK FP.2 -> compute time-to-collision based on Lidar data (implement -> computeTTCLidar)
                     double ttcLidar; 
                     computeTTCLidar(prevBB->lidarPoints, currBB->lidarPoints, sensorFrameRate, ttcLidar);
-                    //// EOF STUDENT ASSIGNMENT
+                    myfile << "lidar TTC = " << ttcLidar << "";
+    				//// EOF STUDENT ASSIGNMENT
 
                     //// STUDENT ASSIGNMENT
                     //// TASK FP.3 -> assign enclosed keypoint matches to bounding box (implement -> clusterKptMatchesWithROI)
@@ -279,9 +286,11 @@ int main(int argc, const char *argv[])
                     double ttcCamera;
                     clusterKptMatchesWithROI(*currBB, (dataBuffer.end() - 2)->keypoints, (dataBuffer.end() - 1)->keypoints, (dataBuffer.end() - 1)->kptMatches);                    
                     computeTTCCamera((dataBuffer.end() - 2)->keypoints, (dataBuffer.end() - 1)->keypoints, currBB->kptMatches, sensorFrameRate, ttcCamera);
+                    myfile << "=" << ttcCamera << "\n";
+    
                     //// EOF STUDENT ASSIGNMENT
 
-                    bVis = true;
+                    bVis = false;
                     if (bVis)
                     {
                         cv::Mat visImg = (dataBuffer.end() - 1)->cameraImg.clone();
@@ -306,6 +315,8 @@ int main(int argc, const char *argv[])
         }
 
     } // eof loop over all images
-
+	
+    myfile.close();
+    
     return 0;
 }

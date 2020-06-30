@@ -6,6 +6,9 @@
 #include <map>
 #include <opencv2/core.hpp>
 
+// ofstream myfile;
+
+
 struct LidarPoint { // single lidar point in space
     double x,y,z,r; // x,y,z in [m], r is point reflectivity
 };
